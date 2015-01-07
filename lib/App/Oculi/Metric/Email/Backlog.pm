@@ -17,17 +17,8 @@ has $_ => (
 ) for qw/ server user mailbox /;
 
 has imap => (
-    isa => 'Net::IMAP::Client',
-    is => 'ro',
-    lazy => 1,
-    default => sub {
-        my $self = shift;
-
-        $self->get_service( imap => {
-                server => $self->server,
-                user => $self->user,
-        });
-    },
+    traits => [ 'App::Oculi::Service' ],
+    service => [ qw/ server user / ],
 );
 
 sub gather_stats {

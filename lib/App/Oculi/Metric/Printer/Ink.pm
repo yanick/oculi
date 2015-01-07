@@ -19,13 +19,8 @@ has printer => (
 );
 
 has host => (
-    is => 'ro',
-    lazy => 1,
-    default => sub {
-        my $self = shift;
-
-        $self->get_service( host => { resource => $self->printer } );
-    },
+    traits => [ 'App::Oculi::Service' ],
+    service => { resource => 'printer' },
 );
 
 
