@@ -1,0 +1,20 @@
+---
+influx:
+    server: enkidu
+    database: oculi
+    user: root
+resources:
+    enkidu:
+        host: 192.168.0.103
+        influxdb:
+            users:
+                root:
+                    password: root
+    gilgamesh:
+        host: 192.168.0.100
+        imap:
+            users:
+                yanick:
+                    password: hushushush
+    nidaba:
+        host: 192.168.0.120

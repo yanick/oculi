@@ -1,0 +1,7 @@
+---
+- metric: Printer::Ink
+  printer: nidaba
+- metric: Email::Backlog
+  server: gilgamesh
+  user: yanick
+  mailbox: inbox
