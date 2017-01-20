@@ -1,7 +1,27 @@
-#!usr/bin/env perl
+#!/usr/bin/env perl
 
-use App::Oculi::Command;
+use File::Serialize;
+use App::Oculi;
 
-App::Oculi::Command->new_with_command->run;
+use experimental 'postderef';
+
+if( -f $ARGV[0] ) {
+    unshift @ARGV, 'run';
+}
+
+my %defaults;
+if( $ARGV[0] eq 'run' ) {
+    my $file;
+    ( undef, $file, @ARGV ) = @ARGV;
+
+    my( $check, $defaults ) = deserialize_file($file)->%*;
+
+    unshift @ARGV, $check;
+
+    %defaults = %$defaults;
+
+}
+
+App::Oculi->new_with_command(%defaults)->run;
 
 1;

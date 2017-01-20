@@ -1,47 +1,111 @@
 package App::Oculi::Metric;
 
-use 5.10.0;
+use 5.20.0;
 
-use strict;
 use warnings;
 
-use Moose::Role;
+use MooseX::App::Command;
+extends 'App::Oculi';
+with 'App::Oculi::Role::InfluxDB';
 
-has "oculi" => (
-    isa => 'App::Oculi',
+use experimental 'signatures', 'postderef';
+
+use Module::Runtime qw/ use_module /;
+use List::AllUtils qw/ pairgrep /;
+
+use App::Oculi::Entry;
+
+has metric => (
     is => 'ro',
-    required => 1,
-    handles => [ 'get_service' ],
-);
-
-has "metric_name" => (
-    isa => 'Str',
-    is => 'ro',
-    default => sub {
-        my $self = shift;
-
-        my ( $class ) = $self->meta->class_precedence_list;
-
-        $class =~ s/^App::Oculi::Metric:://;
-        $class =~ s/::/./g;
-
-        return $class;
+    lazy => 1,
+    default => sub($self) {
+        my $name = ref $self;
+        $name =~ s/.*:://;
+        $name =~ s/(?<=.)(?=[A-Z])/_/g;
+        lc $name;
     },
 );
 
-sub series_label {
-    my $self = shift;
+has tags => (
+    is => 'rw',
+    traits => [ 'Hash' ],
+    lazy => 1,
+    default => sub($self) { +{
+        map { $_->name => $_->get_value($self) } grep { 
+            $_->does('App::Oculi::Trait::Tag')
+        } $self->meta->get_all_attributes
+        }
+    },
+    handles => {
+        all_tags => 'elements',
+    },
+);
 
-    my %attrs = map { 
-        my $att = $self->meta->get_attribute($_);
-        $att->does('App::Oculi::SeriesIdentifier') ? ( $_ => $att->series_index ) : () 
-    } $self->meta->get_attribute_list;
+has entries => (
+    is => 'ro',
+    lazy => 1,
+    traits => [ 'Array' ],
+    handles => { all_entries => 'elements' },
+    default => sub($self) { 
 
-    my @attrs = sort { $attrs{$a} <=> $attrs{$b} } keys %attrs;
+        my %fields = map { $_->get_value($self)->%* } grep { 
+            $_->does('App::Oculi::Trait::Fields')
+        } $self->meta->get_all_attributes;
 
-    return join '.', map { lc } $self->metric_name, map { $self->$_ } @attrs;
+        %fields = ( %fields,
+            pairgrep { defined $b }
+            map { $_->name => $_->get_value($self) } grep { 
+                $_->does('App::Oculi::Trait::Field')
+            } $self->meta->get_all_attributes
+        );
+
+        return [ App::Oculi::Entry->new(
+            measurement => $self->metric,
+            tags        => $self->tags,
+            fields      => \%fields,
+        ) ];
+    },
+);
+
+sub  _expand_entry ($self,$entry) {
+    my( $tags, $fields ) = @$entry;
+
+    return App::Oculi::Entry->new(
+        measurement => $self->metric,
+        tags => { $self->all_tags, %$tags },
+        fields => $fields
+    );
+}
+
+sub stringify($self) { join "\n", map { $_->stringify } 
+    map {
+        (ref $_ eq 'ARRAY') ? $self->_expand_entry($_) : $_ 
+    }
+    $self->all_entries 
+}
+
+after run => sub($self) {
+    my $db = $self->influxdb or return;
+
+    if( $db !~ /\// ) {
+        $db = "localhost:8086/$db";
+    }
+
+    $db =~ s/\//\/write?db=/;
+    $db = "http://$db";
+
+    say "\nsending data to $db...";
+
+    my $resp = use_module('HTTP::Tiny')->new->post(
+        $db, { content => $self->stringify }
+    );
+
+    die sprintf "%s - %s\n", $resp->{status}, $resp->{reason}
+        unless $resp->{success};
+};
+
+sub run($self) {
+    say $self->stringify;
 }
 
 1;
-
-__END__
